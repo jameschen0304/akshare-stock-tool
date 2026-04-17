@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>沪深 A 股历史 K 线（静态页）</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f7fb;
+      --card: #fff;
+      --border: #e2e5ec;
+      --text: #1a1d26;
+      --muted: #5c6578;
+      --accent: #2563eb;
+      --err: #b91c1c;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111318;
+        --card: #1a1d24;
+        --border: #2d3340;
+        --text: #eef1f7;
+        --muted: #9aa3b5;
+        --accent: #60a5fa;
+        --err: #f87171;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 1.25rem;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    h1 { font-size: 1.35rem; margin: 0 0 0.35rem; font-weight: 650; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.2rem; }
+    .row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 0.75rem 1rem;
+      align-items: end;
+    }
+    input, select, button {
+      font: inherit;
+      padding: 0.45rem 0.55rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      width: 100%;
+    }
+    button.primary {
+      grid-column: 1 / -1;
+      background: var(--accent);
+      color: #fff;
+      border-color: transparent;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 0.35rem;
+    }
+    button.primary:disabled { opacity: 0.55; cursor: not-allowed; }
+    .links { font-size: 0.85rem; margin-top: 0.75rem; }
+    .links a { color: var(--accent); }
+    #msg { margin: 0.5rem 0; font-size: 0.9rem; }
+    #msg.err { color: var(--err); }
+    .table-wrap { overflow: auto; max-height: 62vh; border: 1px solid var(--border); border-radius: 8px; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
+    th, td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--card); z-index: 1; }
+    thead th { position: sticky; top: 0; background: var(--card); z-index: 2; font-weight: 600; }
+    details { font-size: 0.85rem; color: var(--muted); margin-top: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>沪深 A 股历史 K 线</h1>
+    <p class="sub">纯静态页面，数据来自东方财富公开接口（与 AKShare <code>stock_zh_a_hist</code> 同源参数）。仅供学习研究，不构成投资建议。</p>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label for="symbol">股票代码（6 位）</label>
+          <input id="symbol" maxlength="6" value="000001" inputmode="numeric" autocomplete="off" />
+        </div>
+        <div>
+          <label for="period">周期</label>
+          <select id="period">
+            <option value="daily">日 K</option>
+            <option value="weekly">周 K</option>
+            <option value="monthly">月 K</option>
+          </select>
+        </div>
+        <div>
+          <label for="adjust">复权</label>
+          <select id="adjust">
+            <option value="">不复权</option>
+            <option value="qfq">前复权</option>
+            <option value="hfq">后复权</option>
+          </select>
+        </div>
+        <div>
+          <label for="beg">开始日期</label>
+          <input id="beg" maxlength="8" value="20240101" />
+        </div>
+        <div>
+          <label for="end">结束日期</label>
+          <input id="end" maxlength="8" value="20500101" />
+        </div>
+        <button type="button" class="primary" id="go">查询</button>
+      </div>
+      <div class="links">
+        <a id="emlink" href="#" target="_blank" rel="noopener">在东财行情页打开该代码</a>
+      </div>
+      <p id="msg"></p>
+    </div>
+
+    <div class="card table-wrap" id="tableHost" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>代码</th>
+            <th>开盘</th>
+            <th>收盘</th>
+            <th>最高</th>
+            <th>最低</th>
+            <th>成交量</th>
+            <th>成交额</th>
+            <th>振幅%</th>
+            <th>涨跌幅%</th>
+            <th>涨跌额</th>
+            <th>换手率%</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <details>
+      <summary>关于本站点</summary>
+      <p>由 GitHub Actions 部署的纯静态页面，数据仍来自东方财富公开接口。若页面打不开，请到仓库 <strong>Actions</strong> 里重新运行发布工作流。</p>
+    </details>
+  </div>
+
+  <script>
+(function () {
+  const periodMap = { daily: "101", weekly: "102", monthly: "103" };
+  const adjustMap = { "": "0", qfq: "1", hfq: "2" };
+
+  const $ = (id) => document.getElementById(id);
+  const msg = $("msg");
+  const tbody = $("tbody");
+  const tableHost = $("tableHost");
+  const go = $("go");
+  const emlink = $("emlink");
+
+  function setMsg(text, isErr) {
+    msg.textContent = text;
+    msg.className = isErr ? "err" : "";
+  }
+
+  function eastmoneyQuoteUrl(code) {
+    const pre = code.startsWith("6") ? "sh" : "sz";
+    return "https://quote.eastmoney.com/" + pre + code + ".html";
+  }
+
+  function updateEmLink() {
+    const code = $("symbol").value.trim();
+    if (/^\d{6}$/.test(code)) {
+      emlink.href = eastmoneyQuoteUrl(code);
+      emlink.hidden = false;
+    } else {
+      emlink.href = "#";
+      emlink.hidden = true;
+    }
+  }
+
+  $("symbol").addEventListener("input", updateEmLink);
+  updateEmLink();
+
+  async function fetchKline() {
+    const symbol = $("symbol").value.trim();
+    const beg = $("beg").value.trim();
+    const end = $("end").value.trim();
+    const period = $("period").value;
+    const adjust = $("adjust").value;
+
+    if (!/^\d{6}$/.test(symbol)) {
+      setMsg("请输入 6 位数字股票代码。", true);
+      tableHost.hidden = true;
+      return;
+    }
+    if (!/^\d{8}$/.test(beg) || !/^\d{8}$/.test(end)) {
+      setMsg("日期须为 8 位数字，例如 20240101。", true);
+      tableHost.hidden = true;
+      return;
+    }
+
+    const market = symbol.startsWith("6") ? "1" : "0";
+    const secid = market + "." + symbol;
+    const params = new URLSearchParams({
+      fields1: "f1,f2,f3,f4,f5,f6",
+      fields2: "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f116",
+      ut: "7eea3edcaed734bea9cbfc24409ed989",
+      klt: periodMap[period],
+      fqt: adjustMap[adjust],
+      secid: secid,
+      beg: beg,
+      end: end,
+    });
+    const url = "https://push2his.eastmoney.com/api/qt/stock/kline/get?" + params.toString();
+
+    go.disabled = true;
+    setMsg("正在请求…");
+    tableHost.hidden = true;
+    tbody.replaceChildren();
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      const klines = data && data.data && data.data.klines;
+      if (!klines || !klines.length) {
+        setMsg("未返回数据：请确认代码为沪深 A 股、日期区间是否合理。", true);
+        return;
+      }
+      const frag = document.createDocumentFragment();
+      for (const line of klines) {
+        const p = line.split(",");
+        if (p.length < 11) continue;
+        const tr = document.createElement("tr");
+        const cells = [
+          p[0], symbol, p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10],
+        ];
+        for (const c of cells) {
+          const td = document.createElement("td");
+          td.textContent = c;
+          tr.appendChild(td);
+        }
+        frag.appendChild(tr);
+      }
+      tbody.appendChild(frag);
+      tableHost.hidden = false;
+      setMsg("共 " + klines.length + " 条记录。");
+    } catch (e) {
+      setMsg("请求失败（网络或跨域限制）。可点击上方「东财」链接在官网查看。", true);
+    } finally {
+      go.disabled = false;
+    }
+  }
+
+  go.addEventListener("click", fetchKline);
+})();
+  </script>
+</body>
+</html>
