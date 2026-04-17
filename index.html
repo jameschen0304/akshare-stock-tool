@@ -86,10 +86,17 @@
 <body>
   <div class="wrap">
     <h1>沪深 A 股历史 K 线</h1>
-    <p class="sub">纯静态页面，数据来自东方财富公开接口（与 AKShare <code>stock_zh_a_hist</code> 同源参数）。仅供学习研究，不构成投资建议。</p>
+    <p class="sub">纯静态页面。默认使用<strong>腾讯证券</strong>接口（与 AKShare <code>stock_zh_a_hist_tx</code> 同源）；若你网络可访问东方财富，可切换为东财（<code>stock_zh_a_hist</code>）。仅供学习研究，不构成投资建议。</p>
 
     <div class="card">
       <div class="row">
+        <div>
+          <label for="provider">数据来源</label>
+          <select id="provider">
+            <option value="tencent" selected>腾讯证券（推荐）</option>
+            <option value="eastmoney">东方财富</option>
+          </select>
+        </div>
         <div>
           <label for="symbol">股票代码（6 位）</label>
           <input id="symbol" maxlength="6" value="000001" inputmode="numeric" autocomplete="off" />
@@ -121,36 +128,28 @@
         <button type="button" class="primary" id="go">查询</button>
       </div>
       <div class="links">
-        <a id="emlink" href="#" target="_blank" rel="noopener">在东财行情页打开该代码</a>
+        <a id="extlink" href="#" target="_blank" rel="noopener">在行情页打开</a>
       </div>
       <p id="msg"></p>
     </div>
 
     <div class="card table-wrap" id="tableHost" hidden>
       <table>
-        <thead>
-          <tr>
-            <th>日期</th>
-            <th>代码</th>
-            <th>开盘</th>
-            <th>收盘</th>
-            <th>最高</th>
-            <th>最低</th>
-            <th>成交量</th>
-            <th>成交额</th>
-            <th>振幅%</th>
-            <th>涨跌幅%</th>
-            <th>涨跌额</th>
-            <th>换手率%</th>
-          </tr>
-        </thead>
+        <thead id="dynThead"></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
 
     <details>
-      <summary>关于本站点</summary>
-      <p>由 GitHub Pages 从 <code>main</code> 分支发布的纯静态页面，数据来自东方财富公开接口。</p>
+      <summary>如何挂到你的 GitHub 并访问</summary>
+      <ol>
+        <li>把本文件推送到你的仓库的 <code>docs/stock-tool/index.html</code>（与当前 AKShare 仓库路径一致）。</li>
+        <li>打开仓库 <strong>Settings → Pages</strong>，Source 选分支（如 <code>main</code>），文件夹选 <code>/docs</code>，保存。</li>
+        <li>几分钟后访问：<br />
+          <code>https://&lt;你的用户名&gt;.github.io/&lt;仓库名&gt;/stock-tool/</code><br />
+          （若仓库名是 <code>username.github.io</code> 的特殊站，路径规则以 GitHub 文档为准。）</li>
+      </ol>
+      <p>若东财、腾讯均在当前网络不可用，只能换网络/VPN 或在本地用 AKShare 拉数。</p>
     </details>
   </div>
 
@@ -159,16 +158,35 @@
   const periodMap = { daily: "101", weekly: "102", monthly: "103" };
   const adjustMap = { "": "0", qfq: "1", hfq: "2" };
 
+  const THEAD_EM =
+    "<tr><th>日期</th><th>代码</th><th>开盘</th><th>收盘</th><th>最高</th><th>最低</th><th>成交量</th><th>成交额</th><th>振幅%</th><th>涨跌幅%</th><th>涨跌额</th><th>换手率%</th></tr>";
+  const THEAD_TX =
+    "<tr><th>日期</th><th>代码</th><th>开盘</th><th>收盘</th><th>最高</th><th>最低</th><th>成交额</th></tr>";
+
   const $ = (id) => document.getElementById(id);
   const msg = $("msg");
   const tbody = $("tbody");
   const tableHost = $("tableHost");
+  const dynThead = $("dynThead");
   const go = $("go");
-  const emlink = $("emlink");
+  const extlink = $("extlink");
 
   function setMsg(text, isErr) {
     msg.textContent = text;
     msg.className = isErr ? "err" : "";
+  }
+
+  function toTxSymbol(code) {
+    if (code.startsWith("6")) return "sh" + code;
+    if (
+      code.startsWith("8") ||
+      code.startsWith("4") ||
+      code.startsWith("92") ||
+      code.startsWith("43")
+    ) {
+      return "bj" + code;
+    }
+    return "sz" + code;
   }
 
   function eastmoneyQuoteUrl(code) {
@@ -176,19 +194,74 @@
     return "https://quote.eastmoney.com/" + pre + code + ".html";
   }
 
-  function updateEmLink() {
-    const code = $("symbol").value.trim();
-    if (/^\d{6}$/.test(code)) {
-      emlink.href = eastmoneyQuoteUrl(code);
-      emlink.hidden = false;
-    } else {
-      emlink.href = "#";
-      emlink.hidden = true;
-    }
+  function tencentQuoteUrl(code) {
+    return "https://gu.qq.com/" + toTxSymbol(code) + "/gp";
   }
 
-  $("symbol").addEventListener("input", updateEmLink);
-  updateEmLink();
+  function updateExtLink() {
+    const code = $("symbol").value.trim();
+    const prov = $("provider").value;
+    if (!/^\d{6}$/.test(code)) {
+      extlink.href = "#";
+      return;
+    }
+    extlink.href = prov === "eastmoney" ? eastmoneyQuoteUrl(code) : tencentQuoteUrl(code);
+    extlink.textContent = prov === "eastmoney" ? "在东财行情页打开" : "在腾讯证券页打开";
+  }
+
+  $("symbol").addEventListener("input", updateExtLink);
+  $("provider").addEventListener("change", updateExtLink);
+  updateExtLink();
+
+  function toCompactFromYmdDash(s) {
+    const d = new Date(String(s).replace(/-/g, "/"));
+    if (Number.isNaN(d.getTime())) return "";
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return y + mo + da;
+  }
+
+  function parseTxKlineText(text, txSym, adjust) {
+    const i = text.indexOf("{");
+    if (i < 0) return [];
+    const data = JSON.parse(text.slice(i));
+    const blk = data.data && data.data[txSym];
+    if (!blk) return [];
+    let key = "day";
+    if (adjust === "hfq" && blk.hfqday) key = "hfqday";
+    else if (adjust === "qfq" && blk.qfqday) key = "qfqday";
+    else if (blk.day) key = "day";
+    else if (blk.hfqday) key = "hfqday";
+    else if (blk.qfqday) key = "qfqday";
+    return blk[key] || [];
+  }
+
+  async function fetchTencentYears(txSym, adjust, y0, y1) {
+    const rows = [];
+    const seen = Object.create(null);
+    for (let year = y0; year <= y1; year++) {
+      const params = new URLSearchParams({
+        _var: "kline_day" + adjust + year,
+        param: txSym + ",day," + year + "-01-01," + (year + 1) + "-12-31,640," + adjust,
+        r: String(Math.random()),
+      });
+      const url = "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get?" + params.toString();
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("腾讯 HTTP " + res.status);
+      const text = await res.text();
+      const part = parseTxKlineText(text, txSym, adjust);
+      for (const row of part) {
+        if (!row || !row.length) continue;
+        const ds = row[0];
+        if (seen[ds]) continue;
+        seen[ds] = 1;
+        rows.push(row);
+      }
+    }
+    rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    return rows;
+  }
 
   async function fetchKline() {
     const symbol = $("symbol").value.trim();
@@ -196,6 +269,7 @@
     const end = $("end").value.trim();
     const period = $("period").value;
     const adjust = $("adjust").value;
+    const provider = $("provider").value;
 
     if (!/^\d{6}$/.test(symbol)) {
       setMsg("请输入 6 位数字股票代码。", true);
@@ -208,19 +282,11 @@
       return;
     }
 
-    const market = symbol.startsWith("6") ? "1" : "0";
-    const secid = market + "." + symbol;
-    const params = new URLSearchParams({
-      fields1: "f1,f2,f3,f4,f5,f6",
-      fields2: "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f116",
-      ut: "7eea3edcaed734bea9cbfc24409ed989",
-      klt: periodMap[period],
-      fqt: adjustMap[adjust],
-      secid: secid,
-      beg: beg,
-      end: end,
-    });
-    const url = "https://push2his.eastmoney.com/api/qt/stock/kline/get?" + params.toString();
+    if (provider === "tencent" && period !== "daily") {
+      setMsg("腾讯源目前仅支持日 K；请改选「日 K」或改用东方财富。", true);
+      tableHost.hidden = true;
+      return;
+    }
 
     go.disabled = true;
     setMsg("正在请求…");
@@ -228,34 +294,74 @@
     tbody.replaceChildren();
 
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      const klines = data && data.data && data.data.klines;
-      if (!klines || !klines.length) {
-        setMsg("未返回数据：请确认代码为沪深 A 股、日期区间是否合理。", true);
-        return;
-      }
-      const frag = document.createDocumentFragment();
-      for (const line of klines) {
-        const p = line.split(",");
-        if (p.length < 11) continue;
-        const tr = document.createElement("tr");
-        const cells = [
-          p[0], symbol, p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10],
-        ];
-        for (const c of cells) {
-          const td = document.createElement("td");
-          td.textContent = c;
-          tr.appendChild(td);
+      if (provider === "tencent") {
+        dynThead.innerHTML = THEAD_TX;
+        const txSym = toTxSymbol(symbol);
+        const y0 = Math.min(parseInt(beg.slice(0, 4), 10), parseInt(end.slice(0, 4), 10));
+        const y1 = Math.max(parseInt(beg.slice(0, 4), 10), parseInt(end.slice(0, 4), 10));
+        const rows = await fetchTencentYears(txSym, adjust, y0, y1);
+        const frag = document.createDocumentFragment();
+        let cnt = 0;
+        for (const row of rows) {
+          const compact = toCompactFromYmdDash(row[0]);
+          if (compact && (compact < beg || compact > end)) continue;
+          const tr = document.createElement("tr");
+          const cells = [row[0], symbol, row[1], row[2], row[3], row[4], row[5]];
+          for (const c of cells) {
+            const td = document.createElement("td");
+            td.textContent = c;
+            tr.appendChild(td);
+          }
+          frag.appendChild(tr);
+          cnt++;
         }
-        frag.appendChild(tr);
+        tbody.appendChild(frag);
+        tableHost.hidden = false;
+        setMsg("腾讯源共 " + cnt + " 条（已按日期过滤）。标的 " + txSym);
+      } else {
+        dynThead.innerHTML = THEAD_EM;
+        const market = symbol.startsWith("6") ? "1" : "0";
+        const secid = market + "." + symbol;
+        const params = new URLSearchParams({
+          fields1: "f1,f2,f3,f4,f5,f6",
+          fields2: "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f116",
+          ut: "7eea3edcaed734bea9cbfc24409ed989",
+          klt: periodMap[period],
+          fqt: adjustMap[adjust],
+          secid: secid,
+          beg: beg,
+          end: end,
+        });
+        const url = "https://push2his.eastmoney.com/api/qt/stock/kline/get?" + params.toString();
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        const klines = data && data.data && data.data.klines;
+        if (!klines || !klines.length) {
+          setMsg("未返回数据：请确认代码为沪深京 A 股、日期区间是否合理。", true);
+          return;
+        }
+        const frag = document.createDocumentFragment();
+        for (const line of klines) {
+          const p = line.split(",");
+          if (p.length < 11) continue;
+          const tr = document.createElement("tr");
+          const cells = [
+            p[0], symbol, p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10],
+          ];
+          for (const c of cells) {
+            const td = document.createElement("td");
+            td.textContent = c;
+            tr.appendChild(td);
+          }
+          frag.appendChild(tr);
+        }
+        tbody.appendChild(frag);
+        tableHost.hidden = false;
+        setMsg("东财源共 " + klines.length + " 条记录。");
       }
-      tbody.appendChild(frag);
-      tableHost.hidden = false;
-      setMsg("共 " + klines.length + " 条记录。");
     } catch (e) {
-      setMsg("请求失败（网络或跨域限制）。可点击上方「东财」链接在官网查看。", true);
+      setMsg("请求失败：当前网络可能无法访问所选数据源，可尝试切换「数据来源」或更换网络。", true);
     } finally {
       go.disabled = false;
     }
